@@ -40,7 +40,7 @@ export interface Context {
   sendSocketMessage: <T extends string>(type: T, payload?: any) => Promise<any>;
   hasWs: () => boolean;
   close: () => Promise<void>;
-  ws?: any; // 添加ws以匹配实现类
+  ws: any; // ws为必选属性以匹配实现类
   _ws: any; // _ws为必选属性以匹配实现类
   pendingMessages: any; // pendingMessages为必选属性以匹配实现类
 }

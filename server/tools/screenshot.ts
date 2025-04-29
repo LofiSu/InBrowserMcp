@@ -64,7 +64,7 @@ export const screenshot: Tool = {
     const imageData = await context.sendSocketMessage(
       "browser_screenshot",
       args
-    );
+    ) as string;
 
     // 返回结果
     return {
