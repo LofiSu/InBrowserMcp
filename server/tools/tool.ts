@@ -41,8 +41,8 @@ export interface Context {
   hasWs: () => boolean;
   close: () => Promise<void>;
   ws?: any; // 添加ws以匹配实现类
-  _ws?: any; // 添加_ws以匹配实现类
-  pendingMessages?: any; // 添加pendingMessages以匹配实现类
+  _ws: any; // _ws为必选属性以匹配实现类
+  pendingMessages: any; // pendingMessages为必选属性以匹配实现类
 }
 
 /**

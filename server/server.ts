@@ -1,14 +1,8 @@
-// 导入WebSocket模块
-import * as WebSocketModule from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { createWebSocketServer } from "./ws";
 import { Context } from "./context";
 import { Tool } from "./tools/tool";
 import { debugLog } from "./utils/log";
-
-// 创建WebSocketServer类型别名
-type WebSocketServer = WebSocketModule.Server;
-// 创建WebSocket类型别名
-type WebSocket = WebSocketModule.WebSocket;
 
 // 服务器配置选项接口
 type ServerOptions = {
