@@ -8,7 +8,7 @@ import { debugLog } from "./utils/log";
 type WebSocket = WebSocketModule.WebSocket;
 
 // 当没有连接到浏览器扩展时显示的错误消息
-const noConnectionMessage = `No connection to browser extension. In order to proceed, you must first connect a tab by clicking the Browser MCP extension icon in the browser toolbar and clicking the 'Connect' button.`;
+const noConnectionMessage = appConfig.errors.noConnectedTab || `Fallback message`;
 
 /**
  * 创建一个唯一ID
@@ -135,11 +135,11 @@ export class Context implements ContextInterface {
       this.pendingMessages.set(id, { resolve, reject, timeout });
 
       // 发送消息
-      this._ws.send(JSON.stringify(message), (error: Error) => {
-        if (error) {
+      this._ws?.send(JSON.stringify(message), (err?: Error) => {
+        if (err) {
           clearTimeout(timeout);
           this.pendingMessages.delete(id);
-          reject(error);
+          reject(err);
         }
       });
     });

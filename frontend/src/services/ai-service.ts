@@ -18,7 +18,11 @@ export interface AiResponse {
   text: string;
   tools?: {
     name: string;
-    args?: ToolArgs;
+    args: {
+      url?: string;
+      element?: string;
+      text?: string;
+    } | undefined;
   }[];
 }
 
@@ -173,12 +177,12 @@ export class AiService {
             ) as ExecuteBrowserActionParams;
             return {
               name: args.tool,
-              args: args.parameters as ToolArgs,
+              args: args.parameters,
             };
           }
           return null;
         })
-        .filter(Boolean);
+        .filter((tool): tool is { name: string; args: { url?: string; element?: string; text?: string; } | undefined; } => tool !== null);
 
       return {
         text: aiMessage.content || "",
