@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react" // Import useEffect
+import { useState, useEffect } from "react" 
 import { X } from "lucide-react"
 
 interface EnvConfigModalProps {
