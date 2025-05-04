@@ -219,7 +219,7 @@ export default function InBrowserMcp() {
       default:
         return (
           <>
-            <Play className="w-3.5 h-3.5 mr-1 fill-white" />
+            <Play className="w-3.5 h-3.5 mr-1 fill-pink-600" />
             运行
           </>
         );
@@ -228,27 +228,36 @@ export default function InBrowserMcp() {
 
   // 根据状态获取按钮样式
   const getButtonClass = () => {
-    const baseClass = "text-white rounded-full px-4 py-1.5 flex items-center shadow-md hover:shadow-lg transition-all text-sm min-w-[80px] justify-center";
-    const defaultGradient = "bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600";
+    // Base style for the button
+    const baseClass = "text-pink-700 rounded-full px-4 py-1.5 flex items-center shadow-sm hover:shadow transition-all text-sm min-w-[80px] justify-center border border-pink-200";
+    // Light pink background, slightly darker on hover
+    const defaultStyle = "bg-pink-100 hover:bg-pink-200/70";
+    // Style for disabled/non-interactive states
+    const disabledStyle = "bg-pink-50 opacity-70 cursor-not-allowed";
 
     switch (runStatus) {
       case 'running':
-        return `${baseClass} ${defaultGradient} cursor-pointer`; // 运行时允许点击取消
+        // Use default style but allow click (for cancel)
+        return `${baseClass} ${defaultStyle} cursor-pointer`; 
       case 'success':
       case 'error':
-        return `${baseClass} ${defaultGradient} opacity-70 cursor-not-allowed`; // 成功或失败时降低透明度并禁用
+        // Use disabled style
+        return `${baseClass} ${disabledStyle}`; 
       case 'idle':
       default:
-        return `${baseClass} ${defaultGradient}`; 
+        // Default interactive style
+        return `${baseClass} ${defaultStyle}`; 
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 bg-gradient-to-b from-pink-50 to-purple-50 min-h-screen rounded-lg">
+    // Use a solid very light pink background
+    <div className="max-w-3xl mx-auto p-4 bg-pink-50 min-h-screen rounded-lg">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4 bg-white p-3 rounded-xl shadow-sm border border-pink-200">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 text-transparent bg-clip-text">
+          {/* Use a solid pink color for the title */}
+          <h1 className="text-xl font-bold text-pink-600">
             InBrowserMcp
           </h1>
         </div>
@@ -261,7 +270,8 @@ export default function InBrowserMcp() {
         </h2>
         <button
           onClick={() => setShowEnvConfig(true)}
-          className="bg-gradient-to-r from-pink-400 to-purple-400 p-2 rounded-full text-white shadow-sm hover:shadow-md transition-all"
+          // Simple light pink button for settings
+          className="bg-pink-100 hover:bg-pink-200/70 p-2 rounded-full text-pink-600 shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={runStatus === 'running'} // 运行时禁用设置
         >
           <Settings className="w-4 h-4" />
@@ -294,10 +304,10 @@ export default function InBrowserMcp() {
         </div>
         <div className="absolute bottom-4 right-4 flex items-center gap-2">
           <button
-            className={getButtonClass()} // 使用动态样式
-            onClick={handleRunButtonClick} // 使用新的处理函数
-            // 禁用逻辑由 getButtonClass 控制或保留部分
-            disabled={runStatus === 'success' || runStatus === 'error'} // 成功或失败时禁用按钮
+            className={getButtonClass()} // Use dynamic class
+            onClick={handleRunButtonClick} // Use new handler
+            // Disabled logic is now handled within getButtonClass
+            // disabled={runStatus === 'success' || runStatus === 'error'} // Remove explicit disable here
           >
             {getButtonContent()} {/* 使用动态内容 */}
           </button>

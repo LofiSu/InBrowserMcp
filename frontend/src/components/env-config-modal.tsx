@@ -33,39 +33,40 @@ MIDSCENE_OPENAI_INIT_CONFIG_JSON='{ "REPO...`,
   return (
     // Lighter backdrop with blur and fade-in animation
     <div className={`fixed inset-0 bg-gray-900/30 backdrop-blur-sm flex items-center justify-center z-50 transition-opacity duration-300 ${backdropAnimation}`}>
-      {/* Modal with scale/fade animation, lighter border, subtle shadow */}
-      <div className={`bg-white rounded-xl w-full max-w-lg mx-4 shadow-xl border border-gray-200 overflow-hidden transform transition-all duration-300 ease-out ${modalAnimation}`}>
-        {/* Lighter header */}
-        <div className="bg-gray-50 p-4 flex justify-between items-center border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-700">模型环境配置</h2>
-          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+      {/* Modal with scale/fade animation, light pink border, subtle shadow */}
+      <div className={`bg-white rounded-xl w-full max-w-lg mx-4 shadow-xl border border-pink-100 overflow-hidden transform transition-all duration-300 ease-out ${modalAnimation}`}>
+        {/* Light pink header */}
+        <div className="bg-pink-50 p-4 flex justify-between items-center border-b border-pink-100">
+          <h2 className="text-lg font-semibold text-pink-600">模型环境配置</h2>
+          <button onClick={handleClose} className="text-pink-400 hover:text-pink-500">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-6">
           <textarea
-            className="w-full border border-gray-300 rounded-lg p-3 min-h-[200px] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-colors"
+            
+            className="w-full border border-pink-100 rounded-lg p-3 min-h-[200px] font-mono text-sm focus:outline-none focus:ring-1 focus:ring-pink-200 focus:border-pink-200 transition-colors"
             value={envConfig}
             onChange={(e) => setEnvConfig(e.target.value)}
           />
 
-          <p className="mt-4 text-gray-700">格式为 KEY=VALUE，每行一个配置项。</p>
+          <p className="mt-4 text-sm text-gray-600">格式为 KEY=VALUE，每行一个配置项。</p>
 
-          <p className="mt-2 mb-6 text-gray-700">
+          <p className="mt-2 mb-6 text-sm text-gray-600">
             这些数据将<strong>保存在您的浏览器本地</strong>。
           </p>
 
           <div className="flex justify-end gap-3">
-            {/* Standard Cancel Button */}
+            {/* Light Pink Cancel Button */}
             <button
               onClick={handleClose} // Use handleClose for animation
-              className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-all"
+              className="px-5 py-2 border border-pink-100 rounded-lg text-pink-600 hover:bg-pink-100/50 transition-colors"
             >
               取消
             </button>
-            {/* Simpler Save Button */}
-            <button className="px-5 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-sm">
+            {/* Light Pink Save Button */}
+            <button className="px-5 py-2 bg-pink-100 text-pink-600 rounded-lg hover:bg-pink-200/70 transition-colors shadow-sm border border-pink-200">
               保存
             </button>
           </div>
