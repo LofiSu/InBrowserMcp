@@ -3,6 +3,7 @@ import { Play, Clock, Settings, Loader2, CheckCircle, XCircle } from "lucide-rea
 import ThinkingDots from "./components/thinking-dots"
 import EnvConfigModal from "./components/env-config-modal"
 import HistoryModal from "./components/history-modal"
+import AlertMessage from "./components/alert-message" // 导入新的 Alert 组件
 import { initializeMCPSession, sendAICommand, addEventListener, removeEventListener, sendCancelCommand } from "./service"
 
 // 定义从服务器接收的事件数据类型
@@ -24,6 +25,7 @@ export default function InBrowserMcp() {
   const [runStatus, setRunStatus] = useState<RunStatus>('idle');
   const [history, setHistory] = useState<Array<{ id: number; command: string; timestamp: string; result: string }>>([])
   const [currentCommandId, setCurrentCommandId] = useState<number | null>(null); // 用于追踪当前命令，以便更新历史记录
+  const [alertMessage, setAlertMessage] = useState<string>(""); // 新增状态用于管理 Alert 消息
 
   const clearHistory = () => {
     setHistory([])
@@ -81,11 +83,19 @@ export default function InBrowserMcp() {
       removeEventListener('message', handleMessage);
       removeEventListener('error', handleError);
     };
-  }, [currentCommandId]); 
+  }, [currentCommandId]); // 添加 currentCommandId 依赖
 
   // 执行命令
   const executeCommand = async () => {
-    if (!inputValue.trim() || runStatus === 'running') return; // 运行时不允许再次执行
+    // 添加输入校验并提示
+    if (!inputValue.trim()) {
+      setAlertMessage("请先输入您想要执行的操作"); // 使用新的 Alert 状态
+      // 可选：设置定时器自动关闭 Alert
+      setTimeout(() => setAlertMessage(""), 3000);
+      return;
+    }
+    // 运行时不允许再次执行
+    if (runStatus === 'running') return;
 
     const commandToSend = inputValue;
     // setInputValue(''); // 不再立即清空输入框
@@ -219,7 +229,7 @@ export default function InBrowserMcp() {
   // 根据状态获取按钮样式
   const getButtonClass = () => {
     const baseClass = "text-white rounded-full px-4 py-1.5 flex items-center shadow-md hover:shadow-lg transition-all text-sm min-w-[80px] justify-center";
-    const defaultGradient = "bg-gradient-to-r from-morandi-pink to-morandi-blue hover:from-morandi-pink-dark hover:to-morandi-blue-dark";
+    const defaultGradient = "bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600";
 
     switch (runStatus) {
       case 'running':
@@ -229,39 +239,39 @@ export default function InBrowserMcp() {
         return `${baseClass} ${defaultGradient} opacity-70 cursor-not-allowed`; // 成功或失败时降低透明度并禁用
       case 'idle':
       default:
-        return `${baseClass} ${defaultGradient}`; // 默认状态
+        return `${baseClass} ${defaultGradient}`; 
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 bg-gradient-to-b from-morandi-pink-light to-morandi-blue-light min-h-screen rounded-lg">
-      {/* Header - 使用莫兰迪色 */}
-      <div className="flex items-center gap-3 mb-4 bg-white p-3 rounded-xl shadow-sm border border-morandi-pink">
+    <div className="max-w-3xl mx-auto p-4 bg-gradient-to-b from-pink-50 to-purple-50 min-h-screen rounded-lg">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4 bg-white p-3 rounded-xl shadow-sm border border-pink-200">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-morandi-pink to-morandi-blue text-transparent bg-clip-text">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 text-transparent bg-clip-text">
             InBrowserMcp
           </h1>
         </div>
       </div>
 
-      {/* Title with Settings Button - 使用莫兰迪色 */}
-      <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-morandi-pink flex justify-between items-center">
+      {/* Title with Settings Button */}
+      <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-pink-200 flex justify-between items-center">
         <h2 className="text-lg font-medium text-gray-800">
           AI驱动的浏览器自动化工具
         </h2>
         <button
           onClick={() => setShowEnvConfig(true)}
-          className="bg-gradient-to-r from-morandi-pink to-morandi-blue p-2 rounded-full text-white shadow-sm hover:shadow-md transition-all"
+          className="bg-gradient-to-r from-pink-400 to-purple-400 p-2 rounded-full text-white shadow-sm hover:shadow-md transition-all"
           disabled={runStatus === 'running'} // 运行时禁用设置
         >
           <Settings className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Input Area - 使用莫兰迪色 */}
-      <div className="border border-morandi-pink rounded-xl p-4 mb-6 relative bg-white shadow-sm">
+      {/* Input Area */}
+      <div className="border border-pink-200 rounded-xl p-4 mb-6 relative bg-white shadow-sm">
         <div className="flex items-start">
-          <div className="p-1 text-morandi-pink mr-2">
+          <div className="p-1 text-pink-400 mr-2">
             {/* Icon */}
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
@@ -301,8 +311,8 @@ export default function InBrowserMcp() {
         </div>
       </div>
 
-      {/* Results Area - 使用莫兰迪色 */}
-      <div className="border border-morandi-pink rounded-xl p-4 min-h-[300px] bg-white shadow-sm">
+      {/* Results Area */}
+      <div className="border border-pink-200 rounded-xl p-4 min-h-[300px] bg-white shadow-sm">
         <div className="flex items-center mb-3">
           {/* Status indicators - Always show running animation */}
           <div className="w-3 h-3 rounded-full mr-1 bg-yellow-400 animate-pulse"></div>
@@ -323,6 +333,9 @@ export default function InBrowserMcp() {
           )}
         </div>
       </div>
+
+      {/* Alert Message */} 
+      <AlertMessage message={alertMessage} onClose={() => setAlertMessage("")} />
 
       {/* Modals */}
       {showEnvConfig && <EnvConfigModal onClose={() => setShowEnvConfig(false)} />}
