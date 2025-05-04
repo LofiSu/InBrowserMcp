@@ -66,8 +66,8 @@ app.use((req, res, next) => {
 const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
 // 存储来自插件 background.js 的 WebSocket 连接
-// 用于存储等待插件响应的 Promise 回调
-const pendingRequests = new Map<string, { resolve: (value: any) => void, reject: (reason?: any) => void, timeoutId?: NodeJS.Timeout }>();
+// 用于存储等待插件响应的 Promise 回调 和 sessionId
+const pendingRequests = new Map<string, { resolve: (value: any) => void, reject: (reason?: any) => void, timeoutId?: NodeJS.Timeout, sessionId: string }>();
 const REQUEST_TIMEOUT = 30000; // 30 秒超时
 let pluginWebSocket: WebSocket | null = null;
 const WS_PORT = 8081; // WebSocket 服务器端口
@@ -102,7 +102,8 @@ function registerTool(server: McpServer, tool: Tool, context: Context) {
 
 // 创建全局 context 对象，使其可在不同请求处理器中访问
 const globalContext = {
-  async sendBrowserAction(type: string, payload: any): Promise<any> {
+  // 修改：添加 sessionId 参数
+  async sendBrowserAction(sessionId: string, type: string, payload: any): Promise<any> {
     // 通过 WebSocket 将指令发送给插件
     if (pluginWebSocket && pluginWebSocket.readyState === WebSocket.OPEN) {
       // --- 请求/响应机制 --- 
@@ -120,8 +121,8 @@ const globalContext = {
           }
         }, REQUEST_TIMEOUT);
 
-        // 存储请求的 resolve/reject 和 timeoutId
-        pendingRequests.set(requestId, { resolve, reject, timeoutId });
+        // 存储请求的 resolve/reject, timeoutId 和 sessionId
+        pendingRequests.set(requestId, { resolve, reject, timeoutId, sessionId }); // 添加 sessionId
 
         // 发送消息
         pluginWebSocket?.send(message, (err) => {
@@ -561,8 +562,8 @@ app.post('/api/ai-command', async (req, res) => {
     if (mcpRequestPayload) {
       console.log(`[API /api/ai-command] Sending command via WebSocket:`, mcpRequestPayload);
       try {
-        // 使用全局 context 的 sendBrowserAction 方法
-        const result = await globalContext.sendBrowserAction(mcpRequestPayload.tool, mcpRequestPayload.args);
+        // 使用全局 context 的 sendBrowserAction 方法，传递 sessionId
+        const result = await globalContext.sendBrowserAction(sessionId, mcpRequestPayload.tool, mcpRequestPayload.args);
         console.log(`[API /api/ai-command] WebSocket command sent successfully. Result:`, result);
         // 假设发送成功，具体响应取决于 sendBrowserAction 的实现
         res.status(200).json({ message: 'Command received and sent to extension via WebSocket', result });
@@ -591,9 +592,7 @@ app.post('/api/ai-command', async (req, res) => {
 // 启动HTTP服务器
 const PORT = 3000;
 const server = app.listen(PORT, () => {
-  debugLog(`🚀 MCP Stateless Streamable HTTP Server listening on port ${PORT}`);
-  debugLog(`🔗 API Endpoint for AI commands available at POST /api/ai-command`);
-  debugLog(`🔌 WebSocket Server listening on port ${WS_PORT}, waiting for extension connection...`);
+  debugLog(`🚀 MCP Stateless Streamable HTTP Server listening on port ${PORT}🔗 API Endpoint for AI commands available at POST /api/ai-command🔌 WebSocket Server listening on port ${WS_PORT}, waiting for extension connection...`);
 });
 
 // 创建 WebSocket 服务器
@@ -605,7 +604,7 @@ wss.on('connection', (ws) => {
   // 假设只有一个插件实例连接
   if (pluginWebSocket && pluginWebSocket.readyState === WebSocket.OPEN) {
     debugLog('⚠️ 检测到新的插件连接，关闭旧连接');
-    pluginWebSocket.terminate(); // 关闭旧连接
+    pluginWebSocket.terminate(); 
   }
   pluginWebSocket = ws;
 
@@ -621,7 +620,8 @@ wss.on('connection', (ws) => {
         debugLog(`📬 处理插件响应 (ID: ${requestId}): success=${success}`, data || error || '');
 
         if (pendingRequests.has(requestId)) {
-          const { resolve, reject, timeoutId } = pendingRequests.get(requestId)!;
+          // 同时解构出 sessionId
+          const { resolve, reject, timeoutId, sessionId } = pendingRequests.get(requestId)!;
           // 清除超时定时器
           if (timeoutId) {
             clearTimeout(timeoutId);
@@ -629,6 +629,37 @@ wss.on('connection', (ws) => {
 
           if (success) {
             resolve(data || { success: true }); // 如果有数据则返回数据，否则返回成功状态
+          } else {
+            reject(new Error(error || 'Plugin action failed'));
+          }
+          // --- 新增：通过 SSE 发送事件 --- 
+          const transport = transports[sessionId];
+          if (transport) {
+            const eventType = success ? 'message' : 'error';
+            const eventData = success ? data : { error: error || 'Plugin action failed' };
+            // 访问内部连接并发送 SSE 事件
+            // @ts-ignore - Accessing private member for SSE
+            const connectionsMap = transport._connections as Map<string, any> | undefined;
+            if (connectionsMap && connectionsMap.size > 0) {
+              const connection = connectionsMap.values().next().value; // 获取第一个连接
+              if (connection && typeof connection.sendEvent === 'function') {
+                  connection.sendEvent({ // 直接调用内部连接的 sendEvent
+                      event: eventType, // SSE 'event' 字段
+                      data: JSON.stringify(eventData) // SSE 'data' 字段，必须是字符串
+                  });
+                   debugLog(`[WebSocket Handler] Sent '${eventType}' SSE event for session ${sessionId}`);
+              } else {
+                  debugLog(`[WebSocket Handler] Could not find SSE connection or sendEvent method for session ${sessionId}`);
+              }
+            } else {
+               debugLog(`[WebSocket Handler] No active SSE connections found for session ${sessionId}`);
+            }
+          } else {
+             debugLog(`[WebSocket Handler] Could not find transport for session ${sessionId} to send SSE event.`);
+          }
+
+          if (success) {
+            resolve(data || { success: true });
           } else {
             reject(new Error(error || 'Plugin action failed'));
           }
