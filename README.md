@@ -1,9 +1,9 @@
-# InBrowserMcp - 浏览器内模型上下文协议 (MCP) 实现
+# InBrowserMcp - （开发中）
 
 InBrowserMcp 是一个实验性项目，旨在通过 Chrome 扩展程序将模型上下文协议 (MCP) 的能力引入浏览器内部操作。
 
 它允许 AI 模型或外部应用程序通过 MCP 标准接口向浏览器发送指令（如导航、点击、输入、获取内容等），并通过 Chrome 扩展在浏览器中实际执行这些操作。
-[image](./assets/image.png)
+![image](./assets/image.png)
 ## 项目结构
 
 本项目包含三个主要部分：
