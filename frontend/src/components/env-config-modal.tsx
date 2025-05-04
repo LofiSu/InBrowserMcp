@@ -45,7 +45,6 @@ MIDSCENE_OPENAI_INIT_CONFIG_JSON='{ "REPO...`,
 
         <div className="p-6">
           <textarea
-            {/* Textarea with lighter border and focus ring */}
             className="w-full border border-gray-300 rounded-lg p-3 min-h-[200px] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-colors"
             value={envConfig}
             onChange={(e) => setEnvConfig(e.target.value)}
