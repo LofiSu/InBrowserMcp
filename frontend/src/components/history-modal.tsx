@@ -38,13 +38,13 @@ export default function HistoryModal({ onClose, history = [], onClearHistory, on
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-full max-w-lg mx-4 shadow-lg border border-pink-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-pink-400 to-purple-500 p-4 flex justify-between items-center">
+      <div className="bg-white rounded-xl w-full max-w-lg mx-4 shadow-lg border border-morandi-pink overflow-hidden">
+        <div className="bg-gradient-to-r from-morandi-pink to-morandi-blue p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-white flex items-center">
             <Clock className="w-5 h-5 mr-2" />
             执行历史记录
           </h2>
-          <button onClick={onClose} className="text-white hover:text-pink-100">
+          <button onClick={onClose} className="text-white hover:text-morandi-pink-light">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -57,8 +57,8 @@ export default function HistoryModal({ onClose, history = [], onClearHistory, on
                   key={item.id}
                   className={`p-3 mb-2 rounded-lg border transition-all cursor-pointer ${
                     selectedHistory === item.id
-                      ? "border-pink-300 bg-pink-50"
-                      : "border-gray-200 hover:border-pink-200 hover:bg-pink-50/30"
+                      ? "border-morandi-blue bg-morandi-blue-light/20"
+                      : "border-gray-200 hover:border-morandi-pink hover:bg-morandi-pink-light/20"
                   }`}
                   onClick={() => setSelectedHistory(item.id)}
                 >
@@ -103,7 +103,7 @@ export default function HistoryModal({ onClose, history = [], onClearHistory, on
             </button>
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg hover:from-pink-600 hover:to-purple-600 transition-all shadow-sm"
+              className="px-4 py-2 bg-gradient-to-r from-morandi-pink to-morandi-blue text-white rounded-lg hover:from-morandi-pink-dark hover:to-morandi-blue-dark transition-all shadow-sm"
             >
               关闭
             </button>

@@ -76,7 +76,46 @@ export const sendAICommand = async (command: string): Promise<AICommandResponse>
   }
 };
 
-// 初始化MCP会话
+// 取消当前正在执行的 AI 命令
+export const sendCancelCommand = async (): Promise<void> => {
+  if (!currentSessionId) {
+    console.warn('No active session ID found, cannot send cancel command.');
+    // 可以选择抛出错误或静默失败
+    // throw new Error('No active session ID found');
+    return; // 或者根据需要处理
+  }
+
+  console.log(`Sending cancel command for session: ${currentSessionId}`);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/cancel-command`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: currentSessionId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Failed to parse cancel error response' }));
+      console.error('Failed to send cancel command:', response.status, errorData);
+      throw new Error(errorData.error || `Failed to cancel command (status: ${response.status})`);
+    }
+
+    console.log('Cancel command sent successfully.');
+    // 根据后端响应决定是否需要返回特定信息
+    // const responseData = await response.json();
+    // return responseData;
+
+  } catch (error) { // 网络错误或其他 fetch 异常
+    console.error('Error sending cancel command:', error);
+    // 重新抛出错误，让调用者知道取消操作失败
+    throw error;
+  }
+};
+
 export const initializeMCPSession = async (): Promise<void> => {
   try {
     const response = await fetch(`${API_BASE_URL}/mcp`, {

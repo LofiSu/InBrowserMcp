@@ -7,7 +7,6 @@ import * as tools from "./tools/index.js";
 import { debugLog } from "./utils/log.js";
 import { Context } from "./types/context.js";
 import { Tool } from "./types/tools.js";
-// import { mcpContext } from "./utils/mcp-context.js"; // mcpContext 不再适用，直接在 server 中处理 WebSocket
 import fetch from 'node-fetch';
 import { WebSocketServer, WebSocket } from 'ws'; // 引入 WebSocket 
 
@@ -26,6 +25,34 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// 新增：取消命令端点
+app.post('/api/cancel-command', (req, res) => {
+  const { sessionId } = req.body;
+  debugLog(`🔌 收到取消命令请求，会话 ID: ${sessionId}`);
+
+  // TODO: 更精细的取消逻辑可能需要将会话 ID 与特定操作关联
+  // 目前，我们尝试取消所有与当前 WebSocket 连接相关的待处理请求
+
+  let cancelledCount = 0;
+  pendingRequests.forEach((request, requestId) => {
+    debugLog(`⏳ 正在取消请求 ID: ${requestId}`);
+    clearTimeout(request.timeoutId); // 清除超时
+    request.reject(new Error('Operation cancelled by user request.')); // 拒绝 Promise
+    pendingRequests.delete(requestId); // 从 Map 中移除
+    cancelledCount++;
+  });
+
+  if (cancelledCount > 0) {
+    debugLog(`✅ 成功取消 ${cancelledCount} 个待处理的浏览器操作请求。`);
+    res.status(200).json({ message: `Cancelled ${cancelledCount} pending browser actions.` });
+  } else {
+    debugLog(`🤷 没有找到与当前连接相关的待处理请求进行取消。`);
+    res.status(200).json({ message: 'No active browser actions found to cancel for the current connection.' });
+  }
+  // 注意：这不会停止已经在浏览器中执行的操作，只会停止服务器端的等待
+  // 可能需要向插件发送一个特定的取消指令来停止浏览器端的活动
+});
+
 // 中间件：从查询参数中提取自定义头字段
 app.use((req, res, next) => {
   const sessionId = req.query.sessionId as string;
@@ -39,6 +66,9 @@ app.use((req, res, next) => {
 const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
 // 存储来自插件 background.js 的 WebSocket 连接
+// 用于存储等待插件响应的 Promise 回调
+const pendingRequests = new Map<string, { resolve: (value: any) => void, reject: (reason?: any) => void, timeoutId?: NodeJS.Timeout }>();
+const REQUEST_TIMEOUT = 30000; // 30 秒超时
 let pluginWebSocket: WebSocket | null = null;
 const WS_PORT = 8081; // WebSocket 服务器端口
 
@@ -70,6 +100,64 @@ function registerTool(server: McpServer, tool: Tool, context: Context) {
   );
 }
 
+// 创建全局 context 对象，使其可在不同请求处理器中访问
+const globalContext = {
+  async sendBrowserAction(type: string, payload: any): Promise<any> {
+    // 通过 WebSocket 将指令发送给插件
+    if (pluginWebSocket && pluginWebSocket.readyState === WebSocket.OPEN) {
+      // --- 请求/响应机制 --- 
+      return new Promise((resolve, reject) => {
+        const requestId = randomUUID(); // 为每个请求生成唯一ID
+        const message = JSON.stringify({ type, payload, requestId }); // 在消息中包含 requestId
+        debugLog(`🔌 发送 WebSocket 指令 (ID: ${requestId}): ${type}`, payload);
+
+        // 设置超时
+        const timeoutId = setTimeout(() => {
+          if (pendingRequests.has(requestId)) {
+            debugLog(`⏰ 请求超时 (ID: ${requestId}): ${type}`);
+            pendingRequests.get(requestId)?.reject(new Error(`Request timed out after ${REQUEST_TIMEOUT / 1000} seconds`));
+            pendingRequests.delete(requestId);
+          }
+        }, REQUEST_TIMEOUT);
+
+        // 存储请求的 resolve/reject 和 timeoutId
+        pendingRequests.set(requestId, { resolve, reject, timeoutId });
+
+        // 发送消息
+        pluginWebSocket?.send(message, (err) => {
+          if (err) {
+            debugLog(`❌ WebSocket 发送错误 (ID: ${requestId}):`, err);
+            // 如果发送失败，清除超时并拒绝 Promise
+            clearTimeout(timeoutId);
+            pendingRequests.delete(requestId);
+            reject(err);
+          } else {
+            debugLog(`✅ WebSocket 指令已发送 (ID: ${requestId})`);
+            // 发送成功，等待插件响应
+          }
+        });
+      });
+      // --- 结束 请求/响应机制 ---
+    } else {
+      debugLog('❌ WebSocket 连接不可用，无法发送指令');
+      return Promise.reject(new Error('WebSocket connection to extension is not available.'));
+    }
+  },
+  async wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  },
+  async getBrowserState(): Promise<any> {
+    // TODO: 实现通过 WebSocket 从插件请求状态
+    debugLog('⚠️ getBrowserState via WebSocket not implemented yet.');
+    return Promise.reject(new Error('getBrowserState via WebSocket not implemented yet.'));
+  },
+  // executeBrowserAction 方法已移除，直接使用 sendBrowserAction
+  isConnected(): boolean {
+    // 检查 WebSocket 连接状态
+    return pluginWebSocket !== null && pluginWebSocket.readyState === WebSocket.OPEN;
+  },
+} as Context; // 恢复类型断言为 Context
+
 /**
  * 创建 MCP Server 实例
  * 注册所有工具并返回服务器实例
@@ -80,45 +168,10 @@ function createServer() {
     version: "1.0.0",
   });
 
-  // 创建 context 对象
-  // context 现在依赖 mcpContext 通过浏览器扩展 API 与插件通信
-  const context = {
-    async sendBrowserAction(type: string, payload: any): Promise<any> {
-      // 通过 WebSocket 将指令发送给插件
-      if (pluginWebSocket && pluginWebSocket.readyState === WebSocket.OPEN) {
-        return new Promise((resolve, reject) => {
-          const message = JSON.stringify({ type, payload });
-          debugLog(`🔌 发送 WebSocket 指令: ${message}`);
-          pluginWebSocket?.send(message, (err) => {
-            if (err) {
-              debugLog(`❌ WebSocket 发送错误:`, err);
-              reject(err);
-            } else {
-              // 简单实现：假设发送成功即完成，不等待插件响应
-              // 如果需要等待插件响应，需要更复杂的请求/响应机制
-              resolve({ success: true });
-            }
-          });
-        });
-      } else {
-        debugLog('❌ WebSocket 连接不可用，无法发送指令');
-        return Promise.reject(new Error('WebSocket connection to extension is not available.'));
-      }
-    },
-    async wait(ms: number) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    },
-    async getBrowserState(): Promise<any> {
-      // TODO: 实现通过 WebSocket 从插件请求状态
-      debugLog('⚠️ getBrowserState via WebSocket not implemented yet.');
-      return Promise.reject(new Error('getBrowserState via WebSocket not implemented yet.'));
-    },
-    // executeBrowserAction 方法已移除，直接使用 sendBrowserAction
-    isConnected(): boolean {
-      // 检查 WebSocket 连接状态
-      return pluginWebSocket !== null && pluginWebSocket.readyState === WebSocket.OPEN;
-    },
-  } as unknown as Context;
+  // 使用全局 context 对象
+  const context = globalContext;
+
+
 
   const allTools = [
     // 导航类
@@ -177,7 +230,7 @@ function createServer() {
   ];
 
   // 批量注册所有工具
-  allTools.forEach(tool => registerTool(server, tool, context));
+  allTools.forEach(tool => registerTool(server, tool, globalContext)); // 使用全局 context
 
   return server;
 }
@@ -504,38 +557,25 @@ app.post('/api/ai-command', async (req, res) => {
       };
     }
 
-    // --- 发送 MCP 请求到 /mcp 端点 ---
+    // --- 直接通过 WebSocket 发送指令给插件 ---
     if (mcpRequestPayload) {
-      const mcpUrl = `http://localhost:${PORT}/mcp`; // MCP 服务器在本机
-      console.log(`[API /api/ai-command] Sending MCP request to ${mcpUrl} with payload:`, mcpRequestPayload);
-
-      // 使用 node-fetch 发送 POST 请求
-      const mcpResponse = await fetch(mcpUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream', // 添加 Accept 头
-          'Mcp-Session-Id': sessionId // 注意：MCP 规范通常使用 Mcp-Session-Id
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: mcpRequestPayload.tool, // Use tool name as method
-          params: mcpRequestPayload.args, // Use args as params
-          id: randomUUID() // Add a unique ID
-        })
-      });
-
-      if (!mcpResponse.ok) {
-        const errorText = await mcpResponse.text();
-        console.error(`[API /api/ai-command] Error sending MCP request: ${mcpResponse.status} ${mcpResponse.statusText}`, errorText);
-        throw new Error(`MCP request failed: ${mcpResponse.status} ${mcpResponse.statusText}`);
+      console.log(`[API /api/ai-command] Sending command via WebSocket:`, mcpRequestPayload);
+      try {
+        // 使用全局 context 的 sendBrowserAction 方法
+        const result = await globalContext.sendBrowserAction(mcpRequestPayload.tool, mcpRequestPayload.args);
+        console.log(`[API /api/ai-command] WebSocket command sent successfully. Result:`, result);
+        // 假设发送成功，具体响应取决于 sendBrowserAction 的实现
+        res.status(200).json({ message: 'Command received and sent to extension via WebSocket', result });
+      } catch (sendError) {
+        const errorMsg = sendError instanceof Error ? sendError.message : 'Unknown WebSocket send error';
+        console.error(`[API /api/ai-command] Error sending command via WebSocket: ${errorMsg}`, sendError);
+        // 根据错误类型返回不同的状态码，例如 503 服务不可用（如果 WS 未连接）
+        if (errorMsg.includes('WebSocket connection to extension is not available')) {
+          res.status(503).json({ error: 'Service Unavailable: Browser extension is not connected.' });
+        } else {
+          res.status(500).json({ error: `Failed to send command via WebSocket: ${errorMsg}` });
+        }
       }
-
-      // MCP 响应通常是流式的，这里我们只确认请求已发送
-      // 实际结果会通过 EventSource 推送给前端
-      console.log(`[API /api/ai-command] MCP request sent successfully to session ${sessionId}`);
-      res.status(200).json({ message: 'Command received and forwarded to MCP' });
-
     } else {
       console.log('[API /api/ai-command] No MCP payload generated for the command.');
       res.status(200).json({ message: 'Command received, but no action taken by AI simulation.' });
@@ -570,9 +610,43 @@ wss.on('connection', (ws) => {
   pluginWebSocket = ws;
 
   ws.on('message', (message) => {
-    // 处理来自插件的消息（如果需要）
-    debugLog(`📩收到来自插件的消息: ${message}`);
-    // 可以在这里处理插件的状态更新或操作结果
+    try {
+      const messageString = message.toString();
+      debugLog(`📩 收到来自插件的消息: ${messageString}`);
+      const parsedMessage = JSON.parse(messageString);
+
+      // 检查是否是动作响应消息
+      if (parsedMessage.type === 'action_response' && parsedMessage.payload?.requestId) {
+        const { requestId, success, error, data } = parsedMessage.payload;
+        debugLog(`📬 处理插件响应 (ID: ${requestId}): success=${success}`, data || error || '');
+
+        if (pendingRequests.has(requestId)) {
+          const { resolve, reject, timeoutId } = pendingRequests.get(requestId)!;
+          // 清除超时定时器
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+
+          if (success) {
+            resolve(data || { success: true }); // 如果有数据则返回数据，否则返回成功状态
+          } else {
+            reject(new Error(error || 'Plugin action failed'));
+          }
+          pendingRequests.delete(requestId); // 处理完后从 Map 中移除
+        } else {
+          debugLog(`⚠️ 收到未知或已超时的请求响应 (ID: ${requestId})`);
+        }
+      } else if (parsedMessage.type === 'status_update') {
+        // 处理插件发送的状态更新，例如页面加载完成等
+        debugLog(`ℹ️ 收到插件状态更新:`, parsedMessage.payload);
+        // 这里可以根据需要进行处理，例如更新某个内部状态
+      } else {
+        // 处理其他类型的消息
+        debugLog(`🔧 处理其他插件消息类型: ${parsedMessage.type}`);
+      }
+    } catch (e) {
+      debugLog('❌ 解析插件消息时出错:', e, message.toString());
+    }
   });
 
   ws.on('close', () => {
@@ -589,8 +663,9 @@ wss.on('connection', (ws) => {
     }
   });
 
-  // 可以选择在连接时发送一个确认消息
-  // ws.send(JSON.stringify({ type: 'server_connected' }));
+  // 发送连接确认消息
+  ws.send(JSON.stringify({ type: 'server_connected', payload: { status: 'connected' } }));
+  debugLog('✅ 已发送 WebSocket 连接确认消息');
 });
 
 wss.on('error', (error) => {

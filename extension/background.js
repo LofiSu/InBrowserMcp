@@ -16,34 +16,31 @@ if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNE
     // 向服务器发送一个测试消息
   ws.send(JSON.stringify({type: 'test', payload: {message: 'Hello from extension'}}));
   };
-  console.log('⏳ 即将设置 onmessage 监听器...');
   ws.onmessage = (event) => {
-    console.log(`📩 ===`);
-    console.log(`📩 [RAW] 收到 WebSocket 消息: ${event.data}`); 
+    console.log(`📩 [RAW] 收到 WebSocket 消息: ${event.data}`);
     try {
       const message = JSON.parse(event.data);
-      console.log('✅ WebSocket 消息解析成功:', message); 
-      
-      // 检查消息格式，兼容不同的消息结构
+      console.log('✅ WebSocket 消息解析成功:', message);
+
+      // 提取 requestId (如果存在)
+      const requestId = message.requestId || null;
+
+      // 检查消息格式并调用 handleServerCommand
       if (message.type && message.payload) {
-        // 标准格式: { type, payload }
-        handleServerCommand(message.type, message.payload);
-      } else if (message.type && message.data) {
-        // 前端服务格式: { type, data }
-        handleServerCommand(message.type, message.data);
-      } else if (message.method && message.params) {
-        // MCP格式: { method, params }
-        handleServerCommand(message.method, message.params);
-      } else if (message.action) {
-        // 另一种可能的格式: { action, ... }
-        const payload = { ...message };
-        delete payload.action;
-        handleServerCommand(message.action, payload);
+        handleServerCommand(message.type, message.payload, requestId);
+      } else if (message.type === 'server_connected') { // 特殊处理服务器连接确认
+        handleServerCommand(message.type, message.payload, null); // 连接消息没有 requestId
       } else {
-        console.warn('⚠️ 无法识别的消息格式:', message);
+        console.warn(`⚠️ 无法识别的消息格式或缺少 requestId:`, message);
+        // 如果收到了无法处理的带 requestId 的消息，可以考虑发送错误响应
+        if (requestId) {
+          sendMessageToServer({ type: 'action_response', payload: { requestId, success: false, error: 'Unrecognized message format from server' } });
+        }
       }
     } catch (error) {
       console.error('❌ 解析 WebSocket 消息失败:', error, '原始消息:', event.data);
+      // 如果解析失败但能从中提取 requestId，可以尝试发送错误响应
+      // (这比较困难，因为原始数据可能是无效 JSON)
     }
   };
 
@@ -65,16 +62,35 @@ if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNE
 // 立即开始连接
 connectWebSocket();
 
+// 向服务器发送消息
+function sendMessageToServer(message) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    const messageString = JSON.stringify(message);
+    console.log(`📤 发送 WebSocket 消息: ${messageString}`);
+    ws.send(messageString);
+  } else {
+    console.error('❌ WebSocket 连接不可用，无法发送消息:', message);
+  }
+}
+
 // 处理来自服务器的指令
-async function handleServerCommand(type, payload) {
-  console.log(`🏁 [handleServerCommand] 开始处理指令: type=${type}`); // Log entry into the function
-  console.log(`⚙️ 处理服务器指令: type=${type}, payload=`, payload);
+async function handleServerCommand(type, payload, requestId) { // 添加 requestId 参数
+  console.log(`🏁 [handleServerCommand] 开始处理指令: type=${type}, requestId=${requestId}`);
+  console.log(`⚙️ 处理服务器指令: type=${type}, payload=`, payload, `, requestId=${requestId}`);
   switch (type) {
+    case 'server_connected':
+      // 服务器已连接确认
+      console.log('✅ 服务器连接已确认:', payload);
+      // 此处可以添加连接成功后的初始化逻辑
+      break;
     case 'navigate':
       if (payload && payload.url) {
-        await navigateToUrl(payload.url);
+        // 注意：不再 await navigateToUrl，因为它内部处理响应发送
+        navigateToUrl(payload.url, requestId); // 传递 requestId
       } else {
-        console.error('❌ navigate 指令缺少 url');
+        console.error('❌ navigate 指令缺少 url, requestId:', requestId);
+        // 如果指令无效，也应发送失败响应
+        sendMessageToServer({ type: 'action_response', payload: { requestId, success: false, error: 'Missing url in navigate command' } });
       }
       break;
     case 'click':
@@ -278,21 +294,68 @@ async function handleServerCommand(type, payload) {
 
 // --- 浏览器操作函数 ---
 
-async function navigateToUrl(url) {
+// 修改 navigateToUrl 以处理 requestId 和发送响应
+async function navigateToUrl(url, requestId) {
+  let tabIdToUpdate = null;
+  let navigationListener = null; // 在外部声明以便在 catch 中访问
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
-      console.log(`🚀 导航到: ${url}`);
-      await chrome.tabs.update(tab.id, { url: url });
-      // 注意：这里仅发起导航，不保证页面加载完成
-      // 可能需要结合 content script 的 page_loaded 消息来确认
+      tabIdToUpdate = tab.id;
+      console.log(`🚀 [${requestId}] 开始导航到: ${url} (Tab ID: ${tabIdToUpdate})`);
+      
+      // --- 等待导航完成 --- 
+      navigationListener = (updatedTabId, changeInfo, updatedTab) => {
+        // 确保是正确的标签页并且导航已完成
+        if (updatedTabId === tabIdToUpdate && changeInfo.status === 'complete') {
+          // 检查 URL 是否是我们导航到的目标 (或其重定向后的版本)
+          // 注意：由于重定向，最终 URL 可能与请求的 URL 不同
+          if (updatedTab.url && (updatedTab.url.startsWith(url) || url.includes(updatedTab.url.split('//')[1]))) { // 简单匹配
+             console.log(`✅ [${requestId}] 导航成功完成: ${updatedTab.url}`);
+             sendMessageToServer({ type: 'action_response', payload: { requestId, success: true, data: { finalUrl: updatedTab.url } } });
+             chrome.tabs.onUpdated.removeListener(navigationListener); // 清理监听器
+          } else {
+             // URL 不匹配，可能导航到了其他地方或出错了
+             console.warn(`⚠️ [${requestId}] 导航完成，但 URL 不匹配: ${updatedTab.url} (预期: ${url})`);
+             // 仍然可以认为导航动作本身是成功的，但结果可能非预期
+             sendMessageToServer({ type: 'action_response', payload: { requestId, success: true, data: { finalUrl: updatedTab.url, warning: 'Final URL differs from requested URL' } } });
+             chrome.tabs.onUpdated.removeListener(navigationListener); // 清理监听器
+          }
+        } else if (updatedTabId === tabIdToUpdate && changeInfo.status === 'loading' && changeInfo.url) {
+           // 可选：记录加载中的 URL 变化
+           // console.log(`🔄 [${requestId}] 导航加载中: ${changeInfo.url}`);
+        }
+      };
+
+      // 添加监听器
+      chrome.tabs.onUpdated.addListener(navigationListener);
+
+      // 设置超时以防万一导航卡住或失败
+      const timeoutId = setTimeout(() => {
+        if (chrome.tabs.onUpdated.hasListener(navigationListener)) {
+          console.error(`⏰ [${requestId}] 导航超时: ${url}`);
+          sendMessageToServer({ type: 'action_response', payload: { requestId, success: false, error: 'Navigation timed out' } });
+          chrome.tabs.onUpdated.removeListener(navigationListener);
+        }
+      }, 30000); // 30秒超时
+
+      // 发起导航 (在设置监听器之后)
+      await chrome.tabs.update(tabIdToUpdate, { url: url });
+
     } else {
-      console.warn('⚠️ 没有找到活动标签页来执行导航');
-      // 如果没有活动标签页，可以考虑创建一个新标签页
-      // await chrome.tabs.create({ url: url });
+      console.warn(`⚠️ [${requestId}] 没有找到活动标签页来执行导航`);
+      // 如果没有活动标签页，发送失败响应
+      sendMessageToServer({ type: 'action_response', payload: { requestId, success: false, error: 'No active tab found for navigation' } });
     }
   } catch (error) {
-    console.error(`❌ 导航到 ${url} 失败:`, error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ [${requestId}] 导航到 ${url} 失败:`, errorMsg);
+    sendMessageToServer({ type: 'action_response', payload: { requestId, success: false, error: `Navigation failed: ${errorMsg}` } });
+    // 如果添加了监听器且出错，尝试移除
+    if (navigationListener && chrome.tabs.onUpdated.hasListener(navigationListener)) {
+      chrome.tabs.onUpdated.removeListener(navigationListener);
+    }
   }
 }
 

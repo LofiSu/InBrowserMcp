@@ -16,17 +16,17 @@ MIDSCENE_OPENAI_INIT_CONFIG_JSON='{ "REPO...`,
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-full max-w-lg mx-4 shadow-lg border border-pink-200 overflow-hidden">
-        <div className="bg-gradient-to-r from-pink-400 to-purple-500 p-4 flex justify-between items-center">
+      <div className="bg-white rounded-xl w-full max-w-lg mx-4 shadow-lg border border-morandi-pink overflow-hidden">
+        <div className="bg-gradient-to-r from-morandi-pink to-morandi-blue p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold text-white">模型环境配置</h2>
-          <button onClick={onClose} className="text-white hover:text-pink-100">
+          <button onClick={onClose} className="text-white hover:text-morandi-pink-light">
             <X className="w-6 h-6" />
           </button>
         </div>
 
         <div className="p-6">
           <textarea
-            className="w-full border border-pink-200 rounded-lg p-3 min-h-[200px] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-pink-300"
+            className="w-full border border-morandi-pink rounded-lg p-3 min-h-[200px] font-mono text-sm focus:outline-none focus:ring-2 focus:ring-morandi-blue"
             value={envConfig}
             onChange={(e) => setEnvConfig(e.target.value)}
           />
@@ -44,7 +44,7 @@ MIDSCENE_OPENAI_INIT_CONFIG_JSON='{ "REPO...`,
             >
               取消
             </button>
-            <button className="px-5 py-2 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg hover:from-pink-600 hover:to-purple-600 transition-all shadow-md">
+            <button className="px-5 py-2 bg-gradient-to-r from-morandi-pink to-morandi-blue text-white rounded-lg hover:from-morandi-pink-dark hover:to-morandi-blue-dark transition-all shadow-md">
               保存
             </button>
           </div>

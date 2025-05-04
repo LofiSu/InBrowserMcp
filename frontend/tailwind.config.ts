@@ -10,6 +10,20 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // 添加莫兰迪色系
+        'morandi-blue': {
+          light: '#b0c4de', // 淡蓝
+          DEFAULT: '#a0b4c8', // 中蓝
+          dark: '#8a9aaf',  // 深蓝
+        },
+        'morandi-pink': {
+          light: '#e6c3d3', // 淡粉
+          DEFAULT: '#d8b4c8', // 中粉
+          dark: '#c8a2b8',  // 深粉
+        },
+        // 保留现有颜色定义，稍后可能映射或移除
+
+      },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -64,8 +78,7 @@ const config: Config = {
         "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
-  },
-  plugins: [animate],
-}
+    plugins: [animate],
+  }
 
 export default config
