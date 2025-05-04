@@ -1,8 +1,8 @@
 // background.js
 
-const WS_URL = "ws://localhost:8081"; // 后端 WebSocket 服务器地址
+const WS_URL = "ws://localhost:8081"; 
 let ws = null;
-let reconnectInterval = 5000; // 重连间隔 5 秒
+let reconnectInterval = 5000; 
 
 function connectWebSocket() {
 // 检查是否已有连接或正在连接
@@ -23,7 +23,25 @@ if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNE
     try {
       const message = JSON.parse(event.data);
       console.log('✅ WebSocket 消息解析成功:', message); 
-      handleServerCommand(message.type, message.payload);
+      
+      // 检查消息格式，兼容不同的消息结构
+      if (message.type && message.payload) {
+        // 标准格式: { type, payload }
+        handleServerCommand(message.type, message.payload);
+      } else if (message.type && message.data) {
+        // 前端服务格式: { type, data }
+        handleServerCommand(message.type, message.data);
+      } else if (message.method && message.params) {
+        // MCP格式: { method, params }
+        handleServerCommand(message.method, message.params);
+      } else if (message.action) {
+        // 另一种可能的格式: { action, ... }
+        const payload = { ...message };
+        delete payload.action;
+        handleServerCommand(message.action, payload);
+      } else {
+        console.warn('⚠️ 无法识别的消息格式:', message);
+      }
     } catch (error) {
       console.error('❌ 解析 WebSocket 消息失败:', error, '原始消息:', event.data);
     }

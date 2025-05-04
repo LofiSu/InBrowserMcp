@@ -119,9 +119,6 @@ export default function InBrowserMcp() {
       <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-pink-200 flex justify-between items-center">
         <h2 className="text-lg font-medium text-gray-800">
           AI驱动的浏览器自动化工具
-          <a href="#" className="text-blue-500 hover:text-blue-600 ml-2 text-sm underline decoration-dotted">
-            了解更多
-          </a>
         </h2>
         <button
           onClick={() => setShowEnvConfig(true)}
