@@ -1,0 +1,71 @@
+# Install and run the scripts that already exist in each package.json.
+#
+# mcp-server:
+#   npm run build  → tsc (typecheck + emit). Includes src/test.
+#   npm test       → tsx src/test/test-client.ts
+#     That file is a manual Streamable HTTP client for http://localhost:3000/mcp.
+#     It needs a live server (and the extension, for tool calls). CI does not start it.
+#   no lint script.
+#
+# frontend:
+#   no test script, so CI runs lint and the build (tsc -b && vite build).
+#   npm run lint   → eslint .
+#   npm run build  → tsc -b && vite build
+#
+# Lockfiles are gitignored, so the install step is `npm install`.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-server:
+    name: mcp-server (install + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: mcp-server
+        run: npm install
+
+      - name: Typecheck and compile
+        working-directory: mcp-server
+        run: npm run build
+
+  frontend:
+    name: frontend (install + lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Typecheck and build
+        working-directory: frontend
+        run: npm run build

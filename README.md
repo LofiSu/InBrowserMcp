@@ -1,117 +1,201 @@
-# InBrowserMcp - （开发中）
+# InBrowserMcp
 
-InBrowserMcp 是一个实验性项目，旨在通过 Chrome 扩展程序将模型上下文协议 (MCP) 的能力引入浏览器内部操作。
+[![CI](https://github.com/LofiSu/InBrowserMcp/actions/workflows/ci.yml/badge.svg)](https://github.com/LofiSu/InBrowserMcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](mcp-server/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Chrome Extension MV3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](extension/manifest.json)
 
-它允许 AI 模型或外部应用程序通过 MCP 标准接口向浏览器发送指令（如导航、点击、输入、获取内容等），并通过 Chrome 扩展在浏览器中实际执行这些操作。
-![image](./assets/image.png)
-## 项目结构
+InBrowserMcp is an experimental [Model Context Protocol](https://modelcontextprotocol.io/) project that puts browser actions behind an MCP endpoint. A TypeScript server speaks Streamable HTTP, a Manifest V3 Chrome extension connects to that server over WebSocket, and a React page sends short commands that the server matches with keywords.
 
-本项目包含三个主要部分：
+![InBrowserMcp React UI](./assets/image.png)
 
-1.  **`mcp-server`**: 后端服务 (Node.js/Express)
-    *   实现了 MCP 服务器，处理来自客户端（如 AI 模型）的 JSON-RPC 请求。
-    *   通过 WebSocket 与 Chrome 扩展 (`extension`) 通信，将 MCP 指令转发给扩展，并接收执行结果。
-    *   提供 `/mcp` 端点用于 MCP 通信 (POST/GET/DELETE)。
-    *   提供 `/api/ai-command` 端点用于接收前端 UI 发送的自然语言指令，并将其（模拟地）转换为 MCP 指令。
-    *   提供 `/api/cancel-command` 端点用于取消正在进行的浏览器操作。
-2.  **`extension`**: Chrome 浏览器扩展
-    *   作为浏览器端的代理，通过 WebSocket 连接到 `mcp-server`。
-    *   接收来自 `mcp-server` 的指令。
-    *   使用 Chrome Extension API (e.g., `chrome.tabs`, `chrome.windows`, `chrome.debugger`) 在浏览器中执行指令。
-    *   将执行结果或错误通过 WebSocket 返回给 `mcp-server`。
-3.  **`frontend`**: 前端用户界面 (React/Vite)
-    *   提供一个简单的 Web 界面，用户可以在此输入自然语言指令。
-    *   通过 HTTP POST 请求将指令发送到 `mcp-server` 的 `/api/ai-command` 端点。
-    *   通过 Server-Sent Events (SSE) 从 `/mcp` 端点接收 MCP 服务器的状态更新和操作结果，并更新 UI。
+## What is in the repo
 
-## 技术栈
+| Directory | Role |
+| --- | --- |
+| [`mcp-server`](mcp-server) | Express server. MCP Streamable HTTP on port **3000**, WebSocket for the extension on port **8081**. |
+| [`extension`](extension) | Unpacked Chrome extension. `background.js` is the service worker that opens `ws://localhost:8081` and calls Chrome APIs. `content.js` is injected on all URLs. |
+| [`frontend`](frontend) | React 19 + Vite + Tailwind UI. Talks to `http://localhost:3000`. |
 
-*   **后端 (`mcp-server`)**: Node.js, Express, TypeScript, `@modelcontextprotocol/sdk`, `ws` (WebSocket)
-*   **扩展 (`extension`)**: JavaScript, Chrome Extension API, WebSocket
-*   **前端 (`frontend`)**: React, Vite, TypeScript, Tailwind CSS, Server-Sent Events (EventSource)
+There is no root `package.json`. Install and run each package from its own directory. Lockfiles are gitignored.
 
-## 工作流程
+```mermaid
+flowchart LR
+  UI["React UI :5173"] -->|HTTP| Server["mcp-server :3000"]
+  Client["MCP client"] -->|Streamable HTTP /mcp| Server
+  Server -->|WebSocket :8081| Ext["Chrome extension"]
+  Ext --> Tabs["Chrome tabs and scripting"]
+```
 
-1.  用户在 `frontend` UI 中输入指令（例如“打开 google.com”）。
-2.  `frontend` 将指令 POST 到 `mcp-server` 的 `/api/ai-command`。
-3.  `mcp-server` (模拟 AI) 将自然语言指令转换为 MCP 工具调用请求（例如 `navigate` 工具）。
-4.  `mcp-server` 通过 WebSocket (`sendBrowserAction`) 将指令和参数发送给 `extension`。
-5.  `extension` (在 `background.js` 中) 接收指令，调用相应的 Chrome API 执行操作（例如 `chrome.tabs.update(...)`）。
-6.  `extension` 将操作结果（成功或失败信息）通过 WebSocket (`action_response`) 发送回 `mcp-server`。
-7.  `mcp-server` 收到 `action_response`，解析结果。
-8.  `mcp-server` 通过与 `frontend` 建立的 SSE 连接 (`/mcp` GET) 发送 `message` 或 `error` 事件。
-9.  `frontend` 接收 SSE 事件，更新 UI 状态（例如从“运行中”变为“成功”或“失败”）。
+## HTTP and WebSocket
 
-## 安装与运行
+Defined in `mcp-server/src/server.ts` and `frontend/src/service/index.ts`:
 
-**先决条件:**
+| Endpoint | Method | Behavior in this repo |
+| --- | --- | --- |
+| `http://localhost:3000/mcp` | `POST` | MCP JSON-RPC. `Accept` must include both `application/json` and `text/event-stream`. `initialize` creates a session and returns `Mcp-Session-Id`. Later calls send that header. |
+| `http://localhost:3000/mcp` | `GET` | Session event stream. Requires `Accept: text/event-stream` and a session id (header or `?sessionId=`). |
+| `http://localhost:3000/mcp` | `DELETE` | Closes a session. Requires the session id. |
+| `http://localhost:3000/api/ai-command` | `POST` | Body `{ command, sessionId, apiKey? }`. Keyword matcher, then a WebSocket message to the extension. |
+| `http://localhost:3000/api/cancel-command` | `POST` | Body `{ sessionId }`. Rejects pending server-side WebSocket waits. |
+| `ws://localhost:8081` | WebSocket | One extension connection. Messages are `{ type, payload, requestId }`. |
 
-*   Node.js (建议 v18 或更高版本)
-*   npm 或 pnpm
-*   Google Chrome 浏览器
+CORS allows origin `http://localhost:5173` only.
 
-**步骤:**
+The server name registered with the MCP SDK is `Browser Plugin MCP Server`, version `1.0.0`.
 
-1.  **克隆仓库:**
-    ```bash
-    git clone <repository-url>
-    cd InBrowserMcp
-    ```
+## MCP tools the server registers
 
-2.  **安装后端依赖:**
-    ```bash
-    cd mcp-server
-    npm install
-    # 或者使用 pnpm
-    # pnpm install
-    cd ..
-    ```
+`createServer()` in `mcp-server/src/server.ts` registers these tools. Names and descriptions come from `mcp-server/src/types/tools.ts`.
 
-3.  **安装前端依赖:**
-    ```bash
-    cd frontend
-    pnpm install # 推荐使用 pnpm，如果使用 npm，请运行 npm install
-    cd ..
-    ```
+| Name | Description |
+| --- | --- |
+| `navigate` | Navigate to a specified URL |
+| `refreshPage` | Refresh the current active tab |
+| `click` | Click on an element on the page |
+| `hover` | Hover over an element on the page |
+| `type` | Type text into an input element |
+| `scroll` | Scroll the page up, down, left, right, or to a specific element |
+| `get_content` | Get the HTML content of the page or a specific element |
+| `get_attribute` | Get the value of a specific attribute for an element |
+| `getCurrentState` | Get the URL and title of the current active tab |
+| `execute_script` | Execute custom JavaScript code on the page |
+| `getAllTabs` | Get information about all open tabs |
+| `create_tab` | Create a new tab |
+| `close_tab` | Close a specific tab |
+| `focus_tab` | Focus on a specific tab |
+| `getAllWindows` | Get information about all open browser windows |
+| `createWindow` | Create a new browser window |
+| `closeWindow` | Close a specific browser window |
+| `focusWindow` | Focus on a specific browser window |
+| `getCookies` | Get cookies for a specific URL |
+| `setCookie` | Set a cookie |
+| `deleteCookie` | Delete a cookie |
+| `getStorageItem` | Get an item from local or session storage |
+| `setStorageItem` | Set an item in local or session storage |
+| `deleteStorageItem` | Delete an item from local or session storage |
+| `searchHistory` | Search browser history |
+| `deleteHistoryUrl` | Delete a specific URL from browser history |
+| `createBookmark` | Create a new bookmark |
+| `searchBookmarks` | Search bookmarks |
+| `wait` | Wait for a specified duration (backend only) |
+| `screenshot` | Take a screenshot of the current visible tab |
+| `clearBrowsingData` | Clear browsing data |
+| `snapshot` | Take a snapshot of the current page state (DOM/ARIA) |
 
-4.  **加载 Chrome 扩展:**
-    *   打开 Chrome 浏览器，地址栏输入 `chrome://extensions/`。
-    *   启用右上角的“开发者模式”。
-    *   点击“加载已解压的扩展程序”。
-    *   选择项目中的 `InBrowserMcp/extension` 文件夹。
-    *   确保扩展已启用。
+Registration means an MCP client can list the tool. See [Wiring notes](#wiring-notes) before expecting every name to move the browser.
 
-5.  **启动后端服务:**
-    ```bash
-    cd mcp-server
-    npm run build
-    npm start
-    ```
-    后端服务默认运行在 `http://localhost:8080`，WebSocket 服务器监听 `ws://localhost:8081`。
+## Requirements
 
-6.  **启动前端开发服务器:**
-    ```bash
-    cd frontend
-    pnpm run dev
-    ```
-    前端应用默认运行在 `http://localhost:5173`。
+- Node.js 20 or newer (CI uses Node.js 22). The server's `@types/node` range is `^20`.
+- npm. `pnpm` is only required for the `start` script, which is `pnpm build && node dist/server.js`.
+- Google Chrome, to load the unpacked extension.
 
-7.  **使用:**
-    *   打开浏览器访问 `http://localhost:5173`。
-    *   在输入框中输入指令，例如“打开 google.com”或“导航到 bilibili.com”。
-    *   观察状态变化和浏览器行为。
+## Run it
 
-## 注意事项
+Start the server before the extension so the WebSocket port is open. The extension retries every 5 seconds.
 
-*   Chrome 扩展需要必要的权限才能执行某些操作（例如访问标签页、窗口、调试器等），这些权限在 `extension/manifest.json` 中配置。
-*   后端和扩展之间的 WebSocket 连接是核心通信渠道。
-*   前端通过 SSE 与后端通信以获取实时更新。
-*   当前的 `/api/ai-command` 只是一个简单的模拟，实际应用中需要替换为真正的 AI 模型调用或更复杂的指令解析逻辑。
+### 1. MCP server
 
-## 贡献
+```bash
+cd mcp-server
+npm install
+npm run dev
+```
 
-欢迎提出问题、报告错误或提交合并请求。
+`npm run dev` is `tsx watch src/server.ts`.
 
-## 许可证
+To compile and run the built file instead:
 
-本项目采用 [MIT 许可证](LICENSE)。
+```bash
+npm run build          # tsc, output in dist/
+node dist/server.js
+```
+
+`npm start` shells out to pnpm (`pnpm build && node dist/server.js`). Use the two commands above when pnpm is not installed.
+
+The process listens on `http://localhost:3000` and `ws://localhost:8081`.
+
+### 2. Chrome extension
+
+1. Open `chrome://extensions`.
+2. Turn on Developer mode.
+3. Choose **Load unpacked** and select the `extension` directory.
+4. Keep the extension enabled. `background.js` connects to `ws://localhost:8081`.
+
+`extension/manifest.json` (Manifest V3) requests `activeTab`, `scripting`, `storage`, `sidePanel`, and `tabs`. The side panel path is `dist/index.html` inside the extension directory. The Vite build writes to `frontend/dist`. No script copies that build into `extension/dist`.
+
+### 3. React UI
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite serves the app at `http://localhost:5173` (the default; `vite.config.ts` does not set a port). The page title in the UI is “AI驱动的浏览器自动化工具”.
+
+Other scripts in `frontend/package.json`:
+
+| Script | Command |
+| --- | --- |
+| `npm run lint` | `eslint .` |
+| `npm run build` | `tsc -b && vite build` |
+| `npm run preview` | `vite preview` |
+
+`frontend` has no `test` script. The API base URL is the constant `http://localhost:3000` in `frontend/src/service/index.ts`.
+
+On load, the UI `POST`s an MCP `initialize` request, then `notifications/initialized`, then opens `EventSource` on `GET /mcp?sessionId=...`. Typing a command and pressing Run calls `POST /api/ai-command`. Pressing the button again while a command is running calls `POST /api/cancel-command`. History shown in the clock dialog is React state for the current page session.
+
+## Commands the keyword handler recognizes
+
+`POST /api/ai-command` lowercases the text and picks one WebSocket `type`. It does this with `String.includes` checks in `server.ts`. `apiKey` is accepted on the body and unused.
+
+| When the command text includes | WebSocket `type` | Payload |
+| --- | --- | --- |
+| `bilibili`, `搜索框`, and `输入` | `typeText` | `{ selector: "#nav-search-input", text, options: { delay: 50 } }`. `text` is the substring after `输入`, or `Trae AI`. |
+| `导航到` or `打开` | `navigate` | `{ url }`. The word after `打开` is used as the host, with `https://` added when it does not already start with `http`. If that word is missing and the text mentions bilibili, the URL is `https://www.bilibili.com`. Otherwise it is `https://www.google.com`. |
+| `点击` or `单击` | `click` | `{ selector }`. A quoted value after `选择器` or `selector` is used. Otherwise the selector is `button`. |
+| `快照`, `截图`, or `页面状态` | `snapshot` | `{}` |
+| anything else | `getConsoleLogs` | `{}` |
+
+`background.js` handles `navigate` and `click`. It has no `typeText`, `snapshot`, or `getConsoleLogs` branch. The extension's typing branch is named `type`.
+
+The gear icon opens a modal whose textarea lives in component state. The 保存 button has no click handler.
+
+## Manual MCP client
+
+`mcp-server` `npm test` runs `tsx src/test/test-client.ts`. That file is a demo client: it connects to `http://localhost:3000/mcp`, lists tools, and calls `navigate` and `snapshot`. Start the server first. It is not a unit-test suite, and CI does not run it.
+
+`callTool` arguments follow the installed SDK: `{ name, arguments }`.
+
+## Wiring notes
+
+These are behaviors of the current source, useful if a tool call seems to do nothing.
+
+- Tool handlers follow `Context.sendBrowserAction(type, payload)` from `mcp-server/src/types/context.ts` and call it with two arguments, for example `sendBrowserAction("navigate", { url })`. The function implemented in `server.ts` is `sendBrowserAction(sessionId, type, payload)` and puts the second argument in the WebSocket `type` field. `/api/ai-command` calls the three-argument form, so the UI path and the MCP tool path do not send the same message shape.
+- Several tool handlers send camelCase names (`refreshPage`, `hover`, `getCurrentState`, `getCookies`, `getStorageItem`, `searchHistory`, `createBookmark`, `clearBrowsingData`, `getAllTabs`, `createWindow`, …). The extension switch uses different strings for those actions (`refresh_page`, `hover_element`, `get_current_state`, `get_cookies`, `get_storage`, `search_history`, `create_bookmark`, `clear_browsing_data`, `get_all_tabs`, `create_window`, …). Names that already match a `case` include `navigate`, `click`, `type`, `scroll`, `get_content`, `get_attribute`, `execute_script`, `screenshot`, `create_tab`, `close_tab`, and `focus_tab`.
+- `getBrowserState()` rejects with `getBrowserState via WebSocket not implemented yet.` `captureAriaSnapshot` calls it and also sends a `snapshot` WebSocket message. `background.js` has no `snapshot` branch.
+- `background.js` also calls `chrome.cookies`, `chrome.history`, `chrome.bookmarks`, `chrome.browsingData`, and `chrome.windows`. The manifest does not declare those permissions, and it declares no `host_permissions`.
+- `/api/cancel-command` logs `sessionId` and rejects every entry in the server's pending-request map. It does not send a cancel message to the extension, so a navigation already started in Chrome keeps going.
+- `npm test`'s client can list tools only while the HTTP server is up. Tool calls still depend on the WebSocket bridge above.
+
+## 中文简介
+
+InBrowserMcp 是一个实验项目：TypeScript MCP 服务通过 WebSocket 驱动 Chrome 扩展，并附带一个 React 页面。页面里的指令由服务端按关键词匹配后转发，当前实现里没有调用语言模型。
+
+- HTTP / MCP：`http://localhost:3000`（`/mcp` 支持 `POST`、`GET`、`DELETE`）
+- WebSocket：`ws://localhost:8081`（扩展在 `extension/background.js` 里连接）
+- 前端：在 `frontend` 目录执行 `npm install` 和 `npm run dev`，默认 `http://localhost:5173`
+- 扩展：在 `chrome://extensions` 加载未打包的 `extension` 目录
+
+安装顺序、脚本和工具列表以上面的英文说明为准。旧文档里的 `8080` 端口是错的，HTTP 端口以 `mcp-server/src/server.ts` 里的 `PORT = 3000` 为准。
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Suggested GitHub About text and topics are in [REPO_META.md](REPO_META.md).
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2025-2026 LofiSu.
