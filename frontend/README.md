@@ -30,9 +30,8 @@ frontend/
 │   └── index.css       # Tailwind CSS 入口
 ├── index.html
 ├── package.json
-├── pnpm-lock.yaml
 ├── postcss.config.js
-├── tailwind.config.js
+├── tailwind.config.ts
 ├── tsconfig.json
 ├── tsconfig.node.json
 └── vite.config.ts
@@ -44,7 +43,7 @@ frontend/
 
 *   Node.js (建议 v18 或更高版本)
 *   pnpm (推荐) 或 npm
-*   `mcp-server` 正在运行 (默认在 `http://localhost:8080`)
+*   `mcp-server` 正在运行 (默认在 `http://localhost:3000`)
 
 **步骤:**
 
@@ -77,4 +76,4 @@ frontend/
 *   **接收状态更新**: `GET /mcp` (建立 SSE 连接)
     *   服务器会推送 `message`, `error`, `status` 类型的事件。
 
-确保 `mcp-server` 正在运行，并且前端配置中的后端地址 (`VITE_MCP_SERVER_URL` 在 `.env` 文件中，如果使用的话，或者硬编码在 `App.tsx` 中) 指向正确的服务器地址 (默认为 `http://localhost:8080`)。
+确保 `mcp-server` 正在运行，并且前端的后端地址（硬编码在 `src/service/index.ts` 的 `API_BASE_URL`，默认为 `http://localhost:3000`）指向正确的服务器。后端 CORS 目前只允许 `http://localhost:5173`。

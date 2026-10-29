@@ -36,7 +36,8 @@ mcp-server/
 ├── dist/             # 编译后的 JavaScript 文件
 ├── src/
 │   ├── server.ts     # 主要服务器逻辑，包括 Express 设置、WebSocket、MCP 实现
-│   └── transport.ts  # SSE 相关逻辑 (可能)
+│   ├── tools/        # MCP 工具实现
+│   └── types/        # 工具 schema 与上下文类型
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -86,13 +87,13 @@ mcp-server/
     ```bash
     npm start
     ```
-    这将执行 `node dist/server.js`，启动 Express 服务器 (默认 `http://localhost:8080`) 和 WebSocket 服务器 (默认 `ws://localhost:8081`)。
+    这将先执行 `npm run build`，再执行 `node dist/server.js`，启动 Express 服务器 (默认 `http://localhost:3000`) 和 WebSocket 服务器 (默认 `ws://localhost:8081`)。
 
-    或者，在开发过程中使用 `npm run dev` (如果配置了 `ts-node-dev` 或类似工具) 可以实现热重载。
+    开发时也可以直接运行 `npm run dev`（`tsx watch src/server.ts`），无需先手动编译。
 
 ## 配置
 
-*   HTTP 服务器端口 (默认 8080) 和 WebSocket 服务器端口 (默认 8081) 在 `src/server.ts` 中硬编码。可以根据需要修改或使用环境变量。
+*   HTTP 服务器端口 (默认 3000) 和 WebSocket 服务器端口 (默认 8081) 在 `src/server.ts` 中硬编码。可以根据需要修改或使用环境变量。
 
 ## 注意事项
 

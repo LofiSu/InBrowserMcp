@@ -44,14 +44,14 @@ async function runToolExample() {
     // 示例：使用导航工具
     const navigateResult = await client.callTool({
       name: "navigate",
-      params: { url: "https://www.bilibili.com" }
+      arguments: { url: "https://www.bilibili.com" }
     });
     debugLog("➡️ 导航结果:", navigateResult);
 
     // 示例：使用快照工具
     const snapshotResult = await client.callTool({
       name: "snapshot",
-      params: {}
+      arguments: {}
     });
     debugLog("📸 快照结果:", snapshotResult);
 

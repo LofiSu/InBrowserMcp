@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "pnpm build && node dist/server.js",
+    "start": "npm run build && node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "test": "tsx src/test/test-client.ts"
